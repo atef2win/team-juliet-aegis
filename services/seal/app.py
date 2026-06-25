@@ -155,6 +155,130 @@ def health():
     return {"status": "ok", "service": "seal"}
 
 
+@app.get("/openapi.json")
+def openapi():
+    return jsonify({
+        "openapi": "3.0.3",
+        "info": {
+            "title": "AEGIS Seal Service",
+            "version": "1.0.0",
+            "description": "Service de scellement cryptographique C2PA et signature de provenance pour le projet AEGIS."
+        },
+        "paths": {
+            "/health": {
+                "get": {
+                    "summary": "Vérification de l'état de santé du service",
+                    "responses": {
+                        "200": {
+                            "description": "Service opérationnel",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "status": {"type": "string", "example": "ok"},
+                                            "service": {"type": "string", "example": "seal"}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "/seal": {
+                "post": {
+                    "summary": "Scelle un document avec signature C2PA et empreinte cryptographique",
+                    "requestBody": {
+                        "content": {
+                            "multipart/form-data": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string",
+                                            "format": "binary",
+                                            "description": "Le fichier de document à sceller"
+                                        },
+                                        "meta": {
+                                            "type": "string",
+                                            "description": "Métadonnées optionnelles au format JSON"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Fichier scellé avec succès",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "hash": {
+                                                "type": "string",
+                                                "description": "Empreinte SHA-256 du fichier original",
+                                                "example": "dfd8f0d6c38836e3e73ef7f63e6d56d2f4f7e1c2ccc14b391819e165cec9c882"
+                                            },
+                                            "signature": {
+                                                "type": "string",
+                                                "description": "Signature ECDSA P-256 du hash, encodée en hexadécimal",
+                                                "example": "30440220..."
+                                            },
+                                            "fichier_signe": {
+                                                "type": "string",
+                                                "description": "URL relative d'accès au fichier signé C2PA",
+                                                "example": "/static/signed_abc123.jpg"
+                                            },
+                                            "did": {
+                                                "type": "string",
+                                                "description": "Decentralized Identifier did:key de la clé publique de scellement",
+                                                "example": "did:key:zDnaewy..."
+                                            },
+                                            "c2pa_status": {
+                                                "type": "string",
+                                                "description": "Statut de l'injection C2PA",
+                                                "example": "injected"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+
+@app.get("/docs")
+def docs():
+    swagger_html = """<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>AEGIS Seal Service - API Docs</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle-js"></script>
+  <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+      });
+    };
+  </script>
+</body>
+</html>"""
+    return swagger_html
+
+
 @app.post("/seal")
 def seal():
     private_key = get_or_generate_key()

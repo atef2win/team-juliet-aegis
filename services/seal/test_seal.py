@@ -32,6 +32,18 @@ class TestSealService(unittest.TestCase):
         self.assertEqual(data.get("status"), "ok")
         self.assertEqual(data.get("service"), "seal")
 
+    def test_openapi_spec(self):
+        response = self.app.get('/openapi.json')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data.get("openapi"), "3.0.3")
+        self.assertIn("/seal", data.get("paths", {}))
+
+    def test_swagger_ui(self):
+        response = self.app.get('/docs')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"swagger-ui", response.data)
+
     def test_seal_no_file(self):
         # Send empty POST request to /seal (simulate current mock orchestrator call)
         response = self.app.post('/seal')
