@@ -10,10 +10,26 @@ services:
   anchor:
     build: ./services/anchor
     ports: ["8003:8003"]
+    environment:
+      - PGHOST=db
+      - PGDATABASE=aegis
+      - PGUSER=aegis
+      - PGPASSWORD=aegis
+    depends_on: [db]
 
   verify:
     build: ./services/verify
     ports: ["8004:8004"]
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=aegis
+      - POSTGRES_PASSWORD=aegis
+      - POSTGRES_DB=aegis
+    ports: ["5432:5432"]
+    volumes:
+      - aegis_db:/var/lib/postgresql/data
 
   orchestrator:
     build: ./services/orchestrator
@@ -30,3 +46,6 @@ services:
     environment:
       - ORCH_URL=http://orchestrator:8080
     depends_on: [orchestrator]
+
+volumes:
+  aegis_db:
