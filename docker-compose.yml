@@ -1,0 +1,32 @@
+services:
+  detect:
+    build: ./services/detect
+    ports: ["8001:8001"]
+
+  seal:
+    build: ./services/seal
+    ports: ["8002:8002"]
+
+  anchor:
+    build: ./services/anchor
+    ports: ["8003:8003"]
+
+  verify:
+    build: ./services/verify
+    ports: ["8004:8004"]
+
+  orchestrator:
+    build: ./services/orchestrator
+    ports: ["8080:8080"]
+    environment:
+      - DETECT_URL=http://detect:8001
+      - SEAL_URL=http://seal:8002
+      - ANCHOR_URL=http://anchor:8003
+    depends_on: [detect, seal, anchor]
+
+  ui:
+    build: ./services/ui
+    ports: ["8000:8000"]
+    environment:
+      - ORCH_URL=http://orchestrator:8080
+    depends_on: [orchestrator]
