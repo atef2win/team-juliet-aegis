@@ -30,3 +30,10 @@ services:
     environment:
       - ORCH_URL=http://orchestrator:8080
     depends_on: [orchestrator]
+
+  # Passerelle : regroupe detect/seal/anchor/verify sur UN seul port (8090)
+  # -> un seul tunnel ngrok suffit pour que n8n cloud appelle chaque service.
+  gateway:
+    build: ./services/gateway
+    ports: ["8090:8090"]
+    depends_on: [detect, seal, anchor, verify]
