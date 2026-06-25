@@ -14,6 +14,13 @@ services:
   verify:
     build: ./services/verify
     ports: ["8004:8004"]
+    environment:
+      - PGHOST=db
+      - PGDATABASE=aegis
+      - PGUSER=aegis
+      - PGPASSWORD=aegis
+      # URL publique (ngrok -> passerelle) encodee dans le QR. A adapter au tunnel.
+      - PUBLIC_BASE=https://voyage-justifier-faucet.ngrok-free.dev
 
   orchestrator:
     build: ./services/orchestrator
