@@ -45,9 +45,24 @@ cleanup_thread.start()
 
 def get_or_generate_key():
     if os.path.exists(KEY_PATH) and os.path.exists(CERT_PATH):
-        with open(KEY_PATH, "rb") as f:
-            private_key = serialization.load_pem_private_key(f.read(), password=None)
-        return private_key
+        try:
+            with open(KEY_PATH, "rb") as f:
+                private_key = serialization.load_pem_private_key(f.read(), password=None)
+            with open(CERT_PATH, "rb") as f:
+                cert_data = f.read()
+            # Verify we can load at least one valid certificate from the chain
+            x509.load_pem_x509_certificate(cert_data)
+            return private_key
+        except Exception as e:
+            print(f"Error loading existing key/cert: {e}. Regenerating...", flush=True)
+            try:
+                os.remove(KEY_PATH)
+            except:
+                pass
+            try:
+                os.remove(CERT_PATH)
+            except:
+                pass
 
     # 1. Generate Root CA Key and Certificate
     ca_private_key = ec.generate_private_key(ec.SECP256R1())
