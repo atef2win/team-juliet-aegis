@@ -2,7 +2,9 @@ services:
   detect:
     build: ./services/detect
     ports: ["8001:8001"]
-
+    environment:
+      - SIGHTENGINE_USER=503563424
+      - SIGHTENGINE_SECRET=GrfLR4xYCGKtPXtmbLYwp3X2vBTSvsdR
   seal:
     build: ./services/seal
     ports: ["8002:8002"]
