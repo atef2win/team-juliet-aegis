@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import shutil
 import datetime
+import threading
+import time
 from flask import Flask, request, jsonify
 from cryptography import x509
 from cryptography.x509.oid import NameOID
@@ -21,6 +23,25 @@ CERT_PATH = "/app/certificate.pem"
 SIGNED_DIR = "/app/static"
 
 os.makedirs(SIGNED_DIR, exist_ok=True)
+
+# Background thread to clean up signed files older than 1 hour (3600 seconds)
+def cleanup_loop():
+    while True:
+        try:
+            now = time.time()
+            for filename in os.listdir(SIGNED_DIR):
+                filepath = os.path.join(SIGNED_DIR, filename)
+                if os.path.isfile(filepath):
+                    stat = os.stat(filepath)
+                    if now - stat.st_mtime > 3600:
+                        os.remove(filepath)
+                        print(f"Cleaned up expired file: {filename}")
+        except Exception as e:
+            print(f"Error in cleanup thread: {e}")
+        time.sleep(300) # Run every 5 minutes
+
+cleanup_thread = threading.Thread(target=cleanup_loop, daemon=True)
+cleanup_thread.start()
 
 def get_or_generate_key():
     if os.path.exists(KEY_PATH) and os.path.exists(CERT_PATH):
@@ -140,16 +161,40 @@ def seal():
     
     # Receive file
     file = request.files.get("file")
-    if not file:
-        # Fallback to dummy data if no file is provided (e.g. from current mock orchestrator)
-        file_bytes = b"AEGIS Mock File Content for testing"
-        filename = "mock.jpg"
-    else:
-        file_bytes = file.read()
+    
+    # Generate unique output filename
+    if file and file.filename:
         filename = file.filename
+    else:
+        filename = "mock.jpg"
+        
+    ext = os.path.splitext(filename)[1].lower()
+    # Sanitize extension to prevent path injection or unexpected file creations
+    if not ext or not ext.startswith('.') or not ext[1:].isalnum() or len(ext) > 10:
+        ext = ".jpg"
+        
+    temp_in = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+    sha256 = hashlib.sha256()
+    
+    if not file:
+        # Fallback to dummy data if no file is provided
+        file_bytes = b"AEGIS Mock File Content for testing"
+        sha256.update(file_bytes)
+        temp_in.write(file_bytes)
+        temp_in.close()
+    else:
+        # Optimized: Stream file directly from request stream to disk in chunks to minimize memory usage
+        chunk_size = 65536 # 64KB
+        while True:
+            chunk = file.stream.read(chunk_size)
+            if not chunk:
+                break
+            sha256.update(chunk)
+            temp_in.write(chunk)
+        temp_in.close()
 
     # Calculate real SHA-256 hash of the file
-    file_hash = hashlib.sha256(file_bytes).hexdigest()
+    file_hash = sha256.hexdigest()
 
     # Sign the file hash using EC private key (producing the ECDSA signature)
     signature_bytes = private_key.sign(
@@ -167,16 +212,6 @@ def seal():
     multicodec_prefix = b'\x80\x24' # varint for 0x1200 (p256-pub)
     data = multicodec_prefix + public_bytes
     did = "did:key:z" + base58.b58encode(data).decode('utf-8')
-
-    # Inject metadata and sign with c2patool
-    ext = os.path.splitext(filename)[1].lower()
-    # Sanitize extension to prevent path injection or unexpected file creations
-    if not ext or not ext.startswith('.') or not ext[1:].isalnum() or len(ext) > 10:
-        ext = ".jpg"
-        
-    temp_in = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
-    temp_in.write(file_bytes)
-    temp_in.close()
 
     out_filename = f"signed_{uuid.uuid4().hex}{ext}"
     output_path = os.path.join(SIGNED_DIR, out_filename)
@@ -204,6 +239,7 @@ def seal():
     with open(manifest_path, "w") as f:
         json.dump(manifest_data, f)
 
+    c2pa_status = "injected"
     try:
         res = subprocess.run(
             ["c2patool", temp_in.name, "-m", manifest_path, "-o", output_path, "--no_signing_verify"],
@@ -218,10 +254,12 @@ def seal():
             print(f"c2patool failed (probably unsupported format): {res.stderr}")
             shutil.copy(temp_in.name, output_path)
             fichier_signe = f"/static/{out_filename}"
+            c2pa_status = f"skipped (c2patool error: {res.stderr.strip()})"
     except Exception as e:
         print(f"c2patool execution error: {e}")
         shutil.copy(temp_in.name, output_path)
         fichier_signe = f"/static/{out_filename}"
+        c2pa_status = f"skipped (execution error: {str(e)})"
     finally:
         try:
             os.remove(temp_in.name)
@@ -233,9 +271,13 @@ def seal():
         "hash": file_hash,
         "signature": signature_hex,
         "fichier_signe": fichier_signe,
-        "did": did
+        "did": did,
+        "c2pa_status": c2pa_status
     })
 
+
+# Initialize key pair and cert chain on startup to avoid concurrent request race conditions
+get_or_generate_key()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8002)
